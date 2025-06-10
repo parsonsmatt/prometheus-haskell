@@ -244,6 +244,7 @@ module Prometheus (
 
 ,   Info (..)
 ,   Metric (..)
+,   MetricImpl (..)
 ,   Sample (..)
 ,   SampleGroup (..)
 ,   SampleType (..)
