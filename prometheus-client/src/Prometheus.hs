@@ -100,7 +100,7 @@ module Prometheus (
 -- [(1 % 2,0.0),(9 % 10,0.0),(99 % 100,0.0)]
 
 ,   Summary
-,   Quantile
+,   Quantile(..)
 ,   summary
 ,   defaultQuantiles
 ,   getSummary
