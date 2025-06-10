@@ -37,12 +37,12 @@ instance Show SampleType where
 -- name of the sample, a list of labels and their values, and the value encoded
 -- as a ByteString.
 data Sample = Sample !Text !LabelPairs !Builder.Builder
-    deriving (Show)
+    -- deriving (Show)
 
 -- | A Sample group is a list of samples that is tagged with meta data
 -- including the name, help string, and type of the sample.
 data SampleGroup = SampleGroup !Info !SampleType [Sample]
-    deriving (Show)
+    -- deriving (Show)
 
 -- | A metric represents a single value that is being monitored. It is comprised
 -- of a handle value and a collect method. The handle value is typically a new

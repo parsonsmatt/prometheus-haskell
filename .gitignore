@@ -6,3 +6,4 @@ cabal.config
 .stack-work
 */*.yaml.lock
 .devcontainer
+stack.yaml.lock
