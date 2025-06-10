@@ -1,6 +1,6 @@
 # Investigating Memory Use in `prometheus-client`
 
-We're runnig into problems with unexpectedly high memory use in `prometheus-client`, so I've been investigating improving the behavior.
+We're running into problems with unexpectedly high memory use in `prometheus-client`, so I've been investigating improving the behavior.
 
 Specifically, we're notificing a significant increase in the amount of time and memory allocated while calling `exportMetricsToText`.
 Every time we call the endpoint, more and more memory is used to render the response.
@@ -42,7 +42,7 @@ A `Prometheus.Metric.Vector` previously was defined as:
 type VectorState l m = (Metric m, Map.Map l (m, IO [SampleGroup]))
 ```
 
-This `VectorSTate` was being stored in an `IORef`.
+This `VectorState` was being stored in an `IORef`.
 While the operation was evaluating the `VectorState` to WHNF, this only evaluated the tuple constructor, leaving the `Metric` and `Map.Map` unevaluated.
 The `Map` is from `Data.Map.Strict`, which means that the values are evaluated to WHNF.
 Methods from that module evaluate the structure of the `Map`, but polymorphic methods (ie `Functor`, `Traversable`) *do not*.
