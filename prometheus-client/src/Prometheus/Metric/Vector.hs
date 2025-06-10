@@ -34,7 +34,7 @@ vector labels gen = Metric $ do
     return (MkVector ioref, collectVector labels ioref)
 
 checkLabelKeys :: Label l => l -> a -> a
-checkLabelKeys keys r = foldl check r $ map (T.unpack . fst) $ labelPairs keys keys
+checkLabelKeys keys r = foldl check r $ map (T.unpack . labelKey) $ unLabelPairs $ labelPairs keys keys
     where
         check _ "instance" = error "The label 'instance' is reserved."
         check _ "job"      = error "The label 'job' is reserved."
@@ -68,7 +68,7 @@ collectVector keys ioref = do
             SampleGroup info ty (map (prependLabels labels) samples)
 
         prependLabels l (Sample name labels value) =
-            Sample name (labelPairs keys l ++ labels) value
+            Sample name (labelPairs keys l <> labels) value
 
         joinSamples []                      = []
         joinSamples s@(SampleGroup i t _:_) = [SampleGroup i t (extract s)]

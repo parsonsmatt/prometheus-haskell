@@ -16,6 +16,7 @@ module Prometheus.Metric.Histogram (
 ,   getHistogram
 ) where
 
+import Prometheus.Label (labelPairs)
 import Prometheus.Info
 import Prometheus.Metric
 import Prometheus.Metric.Observer
@@ -101,14 +102,14 @@ insert value BucketCounts { histTotal = total, histCount = count, histCountsPerB
 collectHistogram :: Info -> STM.TVar BucketCounts -> IO [SampleGroup]
 collectHistogram info bucketCounts = STM.atomically $ do
     BucketCounts total count counts <- STM.readTVar bucketCounts
-    let sumSample = Sample (name <> "_sum") [] (bsShow total)
-    let countSample = Sample (name <> "_count") [] (bsShow count)
-    let infSample = Sample (name <> "_bucket") [(bucketLabel, "+Inf")] (bsShow count)
+    let sumSample = Sample (name <> "_sum") mempty (bsShow total)
+    let countSample = Sample (name <> "_count") mempty (bsShow count)
+    let infSample = Sample (name <> "_bucket") (labelPairs bucketLabel "+Inf") (bsShow count)
     let samples = map toSample (cumulativeSum (Map.toAscList counts))
     return [SampleGroup info HistogramType $ samples ++ [infSample, sumSample, countSample]]
     where
         toSample (upperBound, count') =
-            Sample (name <> "_bucket") [(bucketLabel, formatFloat upperBound)] $ bsShow count'
+            Sample (name <> "_bucket") (labelPairs bucketLabel (formatFloat upperBound)) $ bsShow count'
         name = metricName info
 
         -- We don't particularly want scientific notation, so force regular

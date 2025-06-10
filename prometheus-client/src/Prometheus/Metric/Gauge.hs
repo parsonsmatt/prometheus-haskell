@@ -71,11 +71,11 @@ getGauge (MkGauge ioref) = liftIO $ IORef.readIORef ioref
 setGaugeToDuration :: (MonadIO m, MonadMonitor m) => Gauge -> m a -> m a
 setGaugeToDuration metric io = do
     (result, duration) <- timeAction io
-    setGauge metric duration 
+    setGauge metric duration
     return result
 
 collectGauge :: Info -> IORef.IORef Double -> IO [SampleGroup]
 collectGauge info c = do
     value <- IORef.readIORef c
-    let sample = Sample (metricName info) [] (BS.fromString $ show value)
+    let sample = Sample (metricName info) mempty (BS.fromString $ show value)
     return [SampleGroup info GaugeType [sample]]

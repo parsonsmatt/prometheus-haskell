@@ -34,12 +34,12 @@ instance Show SampleType where
 -- | A single value recorded at a moment in time. The sample type contains the
 -- name of the sample, a list of labels and their values, and the value encoded
 -- as a ByteString.
-data Sample = Sample Text LabelPairs BS.ByteString
+data Sample = Sample !Text !LabelPairs !BS.ByteString
     deriving (Show)
 
 -- | A Sample group is a list of samples that is tagged with meta data
 -- including the name, help string, and type of the sample.
-data SampleGroup = SampleGroup Info SampleType [Sample]
+data SampleGroup = SampleGroup !Info !SampleType [Sample]
     deriving (Show)
 
 -- | A metric represents a single value that is being monitored. It is comprised
@@ -58,7 +58,7 @@ newtype Metric s =
       --    metric. A counter would return state pointing to the mutable
       --    reference.
       -- 2. An 'IO' action that samples the metric and returns 'SampleGroup's.
-      --    This is the data that will be stored by Prometheus. 
+      --    This is the data that will be stored by Prometheus.
       construct :: IO (s, IO [SampleGroup])
     }
 

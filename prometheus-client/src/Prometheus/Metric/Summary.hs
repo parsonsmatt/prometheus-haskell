@@ -10,6 +10,7 @@ module Prometheus.Metric.Summary (
 ,   getSummary
 ) where
 
+import Prometheus.Label (labelPairs)
 import Prometheus.Info
 import Prometheus.Metric
 import Prometheus.Metric.Observer
@@ -40,13 +41,13 @@ instance NFData Summary where
 
 type Quantile = (Rational, Rational)
 
--- | K is a parameter divisible by two, in the range 4-1024 used in the RelativeErrorQuantile algorithm to 
+-- | K is a parameter divisible by two, in the range 4-1024 used in the RelativeErrorQuantile algorithm to
 -- determine how many items must be retained per compaction section. As the value increases, the accuracy
--- of the sketch increases as well. This function iterates on the k value starting from 6 
--- (conservative on space, but reasonably accurate) until it finds a K value that satisfies the specified 
--- error bounds for the given quantile. Note: this algorithm maintains highest accuracy for the upper tail 
--- of the quantile when passed the 'HighRanksAreAccurate', sampling out more items at lower ranks during 
--- the compaction process. Thus, extremely tight error bounds on low quantile values may cause this 
+-- of the sketch increases as well. This function iterates on the k value starting from 6
+-- (conservative on space, but reasonably accurate) until it finds a K value that satisfies the specified
+-- error bounds for the given quantile. Note: this algorithm maintains highest accuracy for the upper tail
+-- of the quantile when passed the 'HighRanksAreAccurate', sampling out more items at lower ranks during
+-- the compaction process. Thus, extremely tight error bounds on low quantile values may cause this
 -- function to return 'Nothing'.
 --
 -- If another smart constructor was exposed for summary creation, specific k values & LowRanksAreAccurate
@@ -93,8 +94,8 @@ collectSummary info (MkSummary sketchVar quantiles_) = withMVar sketchVar $ \ske
     count_ <- ReqSketch.count sketch
     estimatedQuantileValues <- forM quantiles_ $ \qv ->
       (,) <$> pure (fst qv) <*> ReqSketch.quantile sketch (toDouble $ fst qv)
-    let sumSample = Sample (metricName info <> "_sum") [] (bsShow itemSum)
-    let countSample = Sample (metricName info <> "_count") [] (bsShow count_)
+    let sumSample = Sample (metricName info <> "_sum") mempty (bsShow itemSum)
+    let countSample = Sample (metricName info <> "_count") mempty (bsShow count_)
     return [SampleGroup info SummaryType $ map toSample estimatedQuantileValues ++ [sumSample, countSample]]
     where
         bsShow :: Show s => s -> BS.ByteString
@@ -102,7 +103,7 @@ collectSummary info (MkSummary sketchVar quantiles_) = withMVar sketchVar $ \ske
 
         toSample :: (Rational, Double) -> Sample
         toSample (q, estimatedValue) =
-            Sample (metricName info) [("quantile", T.pack . show $ toDouble q)] $
+            Sample (metricName info) (labelPairs "quantile" (T.pack . show $ toDouble q)) $
                 bsShow estimatedValue
 
         toDouble :: Rational -> Double
