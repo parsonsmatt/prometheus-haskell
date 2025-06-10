@@ -66,3 +66,26 @@ A more efficient approach would use [`doubleDec`](https://hackage-content.haskel
 
 Since the only actual use of the `Sample`'s payload value is in building the report, we can change `Sample` to contain a `Builder` and encode things directly.
 This will improve efficiency by avoiding allocating intermediate `String`s.
+
+## `Histogram`
+
+While investigating `Histogram`, I found a few potential issues:
+
+1. `cumulativeSum` has numerous problems: 
+    * The function holds onto the entire `Map` converted-into-a-`[(Double, Int)]` in order to `zip` it with itself. 
+    * `scanl1` is lazy, similar to `foldl`. On lists, this will result in thunk accumulation.
+2. `showFFloat` is used, requiring a `Double -> String -> Text -> Builder` conversion path.
+3. The entire computation is done inside of a `STM.atomically`.
+   This means that, should anything write to the `TVar`, all of the computation will be retried.
+   This is *probably* bad - we want to capture the state of the metrics *now*, and then return the `SampleGroup`, rather than allowing the computation to be aborted and retried multiple times.
+
+The first two problems are based on the sizeof the histogram, so the number of buckets.
+Every additional bucket causes another float to be rendered into a string, and another list cons cell to be held on to.
+Since number of buckets is likely small, this is probably not a big deal.
+
+However, might as well fix it up where I can!
+`scanl1'` does not exist in `base`, but we can avoid retaining the input list in memory by preserving the tuple structure.
+A bang pattern on the accumulator can help.
+
+`formatFloat` is used to produce a `Text` label value for the `LabelPair`.
+This suggests we can use `Data.Text.Lazy.Builder` to avoid the intermediate `String`.

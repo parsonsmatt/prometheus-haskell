@@ -24,6 +24,7 @@ import Prometheus.MonadMonitor
 
 import Control.Applicative ((<$>))
 import qualified Data.ByteString.Builder as Builder
+import qualified Data.ByteString.Builder.RealFloat as Builder
 import qualified Control.Concurrent.STM as STM
 import Control.DeepSeq
 import Control.Monad.IO.Class
@@ -32,7 +33,9 @@ import qualified Data.Map.Strict as Map
 import Data.Monoid ((<>))
 import Data.Text (Text)
 import qualified Data.Text as T
-import Numeric (showFFloat)
+import qualified Data.Text.Lazy as T.Lazy
+import qualified Data.Text.Lazy.Builder as T.Builder
+import qualified Data.Text.Lazy.Builder.RealFloat as T.Builder
 
 -- | A histogram. Counts the number of observations that fall within the
 -- specified buckets.
@@ -101,8 +104,8 @@ insert value BucketCounts { histTotal = total, histCount = count, histCountsPerB
 
 -- | Collect the current state of a histogram.
 collectHistogram :: Info -> STM.TVar BucketCounts -> IO [SampleGroup]
-collectHistogram info bucketCounts = STM.atomically $ do
-    BucketCounts total count counts <- STM.readTVar bucketCounts
+collectHistogram info bucketCounts = do
+    BucketCounts total count counts <- STM.atomically $ STM.readTVar bucketCounts
     let sumSample = Sample (name <> "_sum") mempty (Builder.doubleDec total)
     let countSample = Sample (name <> "_count") mempty (Builder.intDec count)
     let infSample = Sample (name <> "_bucket") (labelPairs bucketLabel "+Inf") (Builder.intDec count)
@@ -116,9 +119,10 @@ collectHistogram info bucketCounts = STM.atomically $ do
 
         -- We don't particularly want scientific notation, so force regular
         -- numeric representation instead.
-        formatFloat x = T.pack (showFFloat Nothing x "")
+        formatFloat x =
+            T.Lazy.toStrict $ T.Builder.toLazyText $ T.Builder.formatRealFloat T.Builder.Fixed Nothing x
 
-        cumulativeSum xs = zip (map fst xs) (scanl1 (+) (map snd xs))
+        cumulativeSum = scanl1 (\(!l, !x) (!l', !x') -> (l', x + x'))
 
 -- | The label that defines the upper bound of a bucket of a histogram. @"le"@
 -- is short for "less than or equal to".
