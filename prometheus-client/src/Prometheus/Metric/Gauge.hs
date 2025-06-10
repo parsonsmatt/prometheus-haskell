@@ -15,6 +15,7 @@ import Prometheus.Metric
 import Prometheus.Metric.Observer (timeAction)
 import Prometheus.MonadMonitor
 
+import qualified Data.ByteString.Builder as Builder
 import Control.DeepSeq
 import Control.Monad.IO.Class
 import qualified Data.Atomics as Atomics
@@ -77,5 +78,5 @@ setGaugeToDuration metric io = do
 collectGauge :: Info -> IORef.IORef Double -> IO [SampleGroup]
 collectGauge info c = do
     value <- IORef.readIORef c
-    let sample = Sample (metricName info) mempty (BS.fromString $ show value)
+    let sample = Sample (metricName info) mempty (Builder.doubleDec value)
     return [SampleGroup info GaugeType [sample]]

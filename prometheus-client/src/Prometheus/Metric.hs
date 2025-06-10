@@ -13,6 +13,7 @@ import Prometheus.Label
 
 import Control.DeepSeq
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Builder as Builder
 import Data.Text (Text)
 
 
@@ -35,7 +36,7 @@ instance Show SampleType where
 -- | A single value recorded at a moment in time. The sample type contains the
 -- name of the sample, a list of labels and their values, and the value encoded
 -- as a ByteString.
-data Sample = Sample !Text !LabelPairs !BS.ByteString
+data Sample = Sample !Text !LabelPairs !Builder.Builder
     deriving (Show)
 
 -- | A Sample group is a list of samples that is tagged with meta data

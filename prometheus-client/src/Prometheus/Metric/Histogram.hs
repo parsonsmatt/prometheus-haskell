@@ -23,6 +23,7 @@ import Prometheus.Metric.Observer
 import Prometheus.MonadMonitor
 
 import Control.Applicative ((<$>))
+import qualified Data.ByteString.Builder as Builder
 import qualified Control.Concurrent.STM as STM
 import Control.DeepSeq
 import Control.Monad.IO.Class
@@ -102,14 +103,15 @@ insert value BucketCounts { histTotal = total, histCount = count, histCountsPerB
 collectHistogram :: Info -> STM.TVar BucketCounts -> IO [SampleGroup]
 collectHistogram info bucketCounts = STM.atomically $ do
     BucketCounts total count counts <- STM.readTVar bucketCounts
-    let sumSample = Sample (name <> "_sum") mempty (bsShow total)
-    let countSample = Sample (name <> "_count") mempty (bsShow count)
-    let infSample = Sample (name <> "_bucket") (labelPairs bucketLabel "+Inf") (bsShow count)
+    let sumSample = Sample (name <> "_sum") mempty (Builder.doubleDec total)
+    let countSample = Sample (name <> "_count") mempty (Builder.intDec count)
+    let infSample = Sample (name <> "_bucket") (labelPairs bucketLabel "+Inf") (Builder.intDec count)
     let samples = map toSample (cumulativeSum (Map.toAscList counts))
     return [SampleGroup info HistogramType $ samples ++ [infSample, sumSample, countSample]]
     where
+        toSample :: (Double, Int) -> Sample
         toSample (upperBound, count') =
-            Sample (name <> "_bucket") (labelPairs bucketLabel (formatFloat upperBound)) $ bsShow count'
+            Sample (name <> "_bucket") (labelPairs bucketLabel (formatFloat upperBound)) $ Builder.intDec count'
         name = metricName info
 
         -- We don't particularly want scientific notation, so force regular
@@ -117,9 +119,6 @@ collectHistogram info bucketCounts = STM.atomically $ do
         formatFloat x = T.pack (showFFloat Nothing x "")
 
         cumulativeSum xs = zip (map fst xs) (scanl1 (+) (map snd xs))
-
-        bsShow :: Show s => s -> BS.ByteString
-        bsShow = BS.fromString . show
 
 -- | The label that defines the upper bound of a bucket of a histogram. @"le"@
 -- is short for "less than or equal to".

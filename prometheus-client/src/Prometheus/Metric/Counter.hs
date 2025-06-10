@@ -20,6 +20,7 @@ import Control.Monad.IO.Class
 import Control.Monad (unless)
 import qualified Data.Atomics as Atomics
 import qualified Data.ByteString.UTF8 as BS
+import qualified Data.ByteString.Builder as Builder
 import qualified Data.IORef as IORef
 
 
@@ -77,7 +78,7 @@ getCounter (MkCounter ioref) = liftIO $ IORef.readIORef ioref
 collectCounter :: Info -> IORef.IORef Double -> IO [SampleGroup]
 collectCounter info c = do
     value <- IORef.readIORef c
-    let sample = Sample (metricName info) mempty (BS.fromString $ show value)
+    let sample = Sample (metricName info) mempty (Builder.doubleDec value)
     return [SampleGroup info CounterType [sample]]
 
 -- | Count the amount of times an action throws any synchronous exception.

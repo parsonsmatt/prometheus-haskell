@@ -49,4 +49,20 @@ Methods from that module evaluate the structure of the `Map`, but polymorphic me
 
 We can reduce the possibility of memory leaks here by replacing this with a record, bang patterns, and omitting the tuple for the `MetricImpl` type.
 
+## `Counter` to `Builder`
 
+`Counter` is a very simple metric.
+Since the operations used for modifying the `IORef` all evaluate the value to WHNF, and the value is a `Double`, we are not retaining memory here.
+
+However, there is a performance inefficiency: the use
+
+```haskell
+    let sample = Sample (metricName info) mempty (BS.fromString $ show value)
+```
+
+`show :: Double -> String` is going to inefficiently allocate a `[Char]`, which will then be packed using `BS.fromString`.
+Later, in consumption of this, we will convert that `ByteString` into a `Builder`.
+A more efficient approach would use [`doubleDec`](https://hackage-content.haskell.org/package/bytestring-0.12.2.0/docs/Data-ByteString-Builder.html#v:doubleDec) to directly convert to a `Builder`, avoiding allocating the intermediate `String`.
+
+Since the only actual use of the `Sample`'s payload value is in building the report, we can change `Sample` to contain a `Builder` and encode things directly.
+This will improve efficiency by avoiding allocating intermediate `String`s.

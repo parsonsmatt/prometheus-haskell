@@ -21,6 +21,7 @@ import Control.DeepSeq
 import Control.Monad
 import Control.Monad.IO.Class
 import Control.Monad.Primitive
+import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.UTF8 as BS
 import qualified Data.Text as T
 import DataSketches.Quantiles.RelativeErrorQuantile
@@ -94,17 +95,14 @@ collectSummary info (MkSummary sketchVar quantiles_) = withMVar sketchVar $ \ske
     count_ <- ReqSketch.count sketch
     estimatedQuantileValues <- forM quantiles_ $ \qv ->
       (,) <$> pure (fst qv) <*> ReqSketch.quantile sketch (toDouble $ fst qv)
-    let sumSample = Sample (metricName info <> "_sum") mempty (bsShow itemSum)
-    let countSample = Sample (metricName info <> "_count") mempty (bsShow count_)
+    let sumSample = Sample (metricName info <> "_sum") mempty (Builder.doubleDec itemSum)
+    let countSample = Sample (metricName info <> "_count") mempty (Builder.word64Dec count_)
     return [SampleGroup info SummaryType $ map toSample estimatedQuantileValues ++ [sumSample, countSample]]
     where
-        bsShow :: Show s => s -> BS.ByteString
-        bsShow = BS.fromString . show
-
         toSample :: (Rational, Double) -> Sample
         toSample (q, estimatedValue) =
             Sample (metricName info) (labelPairs "quantile" (T.pack . show $ toDouble q)) $
-                bsShow estimatedValue
+                Builder.doubleDec estimatedValue
 
         toDouble :: Rational -> Double
         toDouble = fromRational

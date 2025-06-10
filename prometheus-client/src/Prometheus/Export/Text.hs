@@ -74,7 +74,7 @@ exportSample (Sample name labels value) =
              <> mconcat [ Build.charUtf8 ',' <> exportLabel l' | l' <- ls ]
              <> Build.charUtf8 '}')
     <> Build.charUtf8 ' '
-    <> Build.byteString value
+    <> value
 
 exportLabel :: LabelPair -> Build.Builder
 exportLabel LabelPair { labelKey = key, labelValue = value } =
