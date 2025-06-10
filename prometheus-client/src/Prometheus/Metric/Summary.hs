@@ -72,7 +72,7 @@ summary info quantiles_ = Metric $ do
     rs <- mkReqSketch kInt HighRanksAreAccurate
     mv <- newMVar $ rs {criterion = (:<=)}
     let summary_ = MkSummary mv quantiles_
-    return (summary_, collectSummary info summary_)
+    return $ MetricImpl summary_ (collectSummary info summary_)
     where
         kInt = fromIntegral $ case mapMaybe determineK quantiles_ of
           [] -> error "Unable to create a Summary meeting the provided quantile precision requirements"

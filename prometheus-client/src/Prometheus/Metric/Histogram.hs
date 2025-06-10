@@ -47,7 +47,7 @@ instance NFData Histogram where
 histogram :: Info -> [Bucket] -> Metric Histogram
 histogram info buckets = Metric $ do
   countsTVar <- STM.newTVarIO  (emptyCounts buckets)
-  return (MkHistogram countsTVar, collectHistogram info countsTVar)
+  return $ MetricImpl (MkHistogram countsTVar) (collectHistogram info countsTVar)
 
 -- | Upper-bound for a histogram bucket.
 type Bucket = Double

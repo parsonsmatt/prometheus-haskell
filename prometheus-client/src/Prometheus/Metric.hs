@@ -2,6 +2,7 @@
 
 module Prometheus.Metric (
     Metric (..)
+,   MetricImpl (..)
 ,   Sample (..)
 ,   SampleGroup (..)
 ,   SampleType (..)
@@ -59,7 +60,12 @@ newtype Metric s =
       --    reference.
       -- 2. An 'IO' action that samples the metric and returns 'SampleGroup's.
       --    This is the data that will be stored by Prometheus.
-      construct :: IO (s, IO [SampleGroup])
+      construct :: IO (MetricImpl s)
+    }
+
+data MetricImpl s = MetricImpl
+    { metricImplState :: !s
+    , metricImplCollect :: IO [SampleGroup]
     }
 
 instance NFData a => NFData (Metric a) where

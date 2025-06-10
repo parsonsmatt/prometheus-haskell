@@ -24,7 +24,7 @@ import Data.Traversable (forM)
 
 data VectorState l m = VectorState
     { vectorStateMetric :: !(Metric m)
-    , vectorStateMetricMap :: !(Map.Map l (m, IO [SampleGroup]))
+    , vectorStateMetricMap :: !(Map.Map l (MetricImpl m))
     }
 
 data Vector l m = MkVector (IORef.IORef (VectorState l m))
@@ -36,7 +36,7 @@ instance NFData (Vector l m) where
 vector :: Label l => l -> Metric m -> Metric (Vector l m)
 vector labels gen = Metric $ do
     ioref <- checkLabelKeys labels $ IORef.newIORef $ VectorState gen Map.empty
-    return (MkVector ioref, collectVector labels ioref)
+    return $ MetricImpl (MkVector ioref) (collectVector labels ioref)
 
 checkLabelKeys :: Label l => l -> a -> a
 checkLabelKeys keys r = foldl check r $ map (T.unpack . labelKey) $ unLabelPairs $ labelPairs keys keys
@@ -66,7 +66,7 @@ collectVector keys ioref = do
     VectorState _ metricMap <- IORef.readIORef ioref
     joinSamples <$> concat <$> mapM collectInner (Map.assocs metricMap)
     where
-        collectInner (labels, (_metric, sampleGroups)) =
+        collectInner (labels, (MetricImpl _metric sampleGroups)) =
             map (adjustSamples labels) <$> sampleGroups
 
         adjustSamples labels (SampleGroup info ty samples) =
@@ -86,7 +86,7 @@ getVectorWith :: Vector label metric
               -> IO [(label, a)]
 getVectorWith (MkVector valueTVar) f = do
     VectorState _ metricMap <- IORef.readIORef valueTVar
-    Map.assocs <$> forM metricMap (f . fst)
+    Map.assocs <$> forM metricMap (f . metricImplState)
 
 -- | Given a label, applies an operation to the corresponding metric in the
 -- vector.
@@ -98,7 +98,7 @@ withLabel :: (Label label, MonadMonitor m)
 withLabel (MkVector ioref) label f = doIO $ do
     VectorState (Metric gen) _ <- IORef.readIORef ioref
     newMetric <- gen
-    (metric, !newVectorState) <- Atomics.atomicModifyIORefCAS ioref $ \(VectorState _ metricMap) ->
+    MetricImpl metric newVectorState <- Atomics.atomicModifyIORefCAS ioref $ \(VectorState _ metricMap) ->
         let maybeMetric = Map.lookup label metricMap
             updatedMap  = Map.insert label newMetric metricMap
         in  case maybeMetric of

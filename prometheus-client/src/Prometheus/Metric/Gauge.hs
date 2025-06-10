@@ -31,7 +31,7 @@ instance NFData Gauge where
 gauge :: Info -> Metric Gauge
 gauge info = Metric $ do
     ioref <- IORef.newIORef 0
-    return (MkGauge ioref, collectGauge info ioref)
+    return $ MetricImpl (MkGauge ioref) (collectGauge info ioref)
 
 withGauge :: MonadMonitor m
           => Gauge

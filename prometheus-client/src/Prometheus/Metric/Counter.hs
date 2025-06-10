@@ -32,7 +32,7 @@ instance NFData Counter where
 counter :: Info -> Metric Counter
 counter info = Metric $ do
     ioref <- IORef.newIORef 0
-    return (MkCounter ioref, collectCounter info ioref)
+    return $ MetricImpl (MkCounter ioref) (collectCounter info ioref)
 
 withCounter :: MonadMonitor m
           => Counter
