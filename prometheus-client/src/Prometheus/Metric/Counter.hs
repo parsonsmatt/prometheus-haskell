@@ -40,7 +40,7 @@ withCounter :: MonadMonitor m
           -> (Double -> Double)
           -> m ()
 withCounter (MkCounter ioref) f =
-    doIO $ Atomics.atomicModifyIORefCAS_ ioref f
+    doIO $ IORef.atomicModifyIORef' ioref (\a -> (f a, ()))
 
 -- | Increments the value of a counter metric by 1.
 incCounter :: MonadMonitor m => Counter -> m ()

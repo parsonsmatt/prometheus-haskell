@@ -44,6 +44,7 @@ library
     , primitive
     , mtl                >=2
     , stm                >=2.3
+    , stm-containers
     , transformers
     , transformers-compat
     , utf8-string
