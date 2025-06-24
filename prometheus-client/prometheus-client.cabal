@@ -49,6 +49,10 @@ library
     , utf8-string
     , exceptions
     , text
+    , stm-containers
+    , focus
+    , list-t
+    , hashable
     , data-sketches
   ghc-options: -Wall
 
