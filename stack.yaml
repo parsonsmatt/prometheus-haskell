@@ -6,3 +6,6 @@ packages:
 - prometheus-proc
 - wai-middleware-prometheus
 resolver: lts-22.43
+
+extra-deps:
+  - unix-memory-0.1.2

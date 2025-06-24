@@ -45,6 +45,7 @@ data Quantile = Quantile
   { quantileRank :: !Rational
   , quantileAcceptableError :: !Rational
   }
+  deriving Show
 
 instance NFData Quantile where
   rnf (Quantile a b) = rnf a `seq` rnf b `seq` ()

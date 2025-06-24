@@ -4,13 +4,20 @@
 module Main (main) where
 
 import Prometheus
+import GHC.Stack
+
+import Control.DeepSeq
+import qualified Prometheus.Metric.Vector.STM as Vector.STM
+import qualified Prometheus.Metric.Vector as Vector
 
 import Control.Monad
 import Criterion
 import Criterion.Main
 import Data.Foldable (for_)
 import qualified Data.Text as T
+import Data.Text (Text)
 import System.Random
+import Control.Concurrent.Async
 
 withMetric m =
   envWithCleanup
@@ -32,11 +39,13 @@ withHistogram buckets =
 main :: IO ()
 main =
   defaultMain
-    [ benchCounter
-    , benchGauge
-    , benchSummary
-    , benchHistogram
-    , benchExport
+    [ -- benchCounter
+--     , benchGauge
+--     , benchSummary
+--     , benchHistogram
+--     , benchExport
+     benchVector "Vector" Vector.vector Vector.withLabel Vector.getVectorWith
+    , benchVector "Vector.STM" Vector.STM.vector Vector.STM.withLabel Vector.STM.getVectorWith
     ]
 
 
@@ -104,8 +113,6 @@ benchSummaryWithQuantiles q =
 benchSummaryObserve s =
   bench "observe" $ whnfIO (observe s 42)
 
-
-
 -- Histogram benchmarks
 
 
@@ -147,3 +154,34 @@ benchExportHistograms nHistograms =
     setup = replicateM_ nHistograms $ do
       register $ histogram (Info (T.pack $ show nHistograms) "") defaultBuckets
     teardown _ = unregisterAll
+
+benchVector
+    :: (HasCallStack, NFData (vector (Text, Text, Text) Counter))
+    => String
+    -> ((Text, Text, Text) -> Metric Counter -> Metric (vector (Text, Text, Text) Counter))
+    -> (vector (Text, Text, Text) Counter -> (Text, Text, Text) -> (Counter -> IO ()) -> IO ())
+    -> (vector (Text, Text, Text) Counter -> (Counter -> IO Double) -> IO [((Text, Text, Text), Double)])
+    -> Benchmark
+benchVector str mkVector withLabel' getVectorWith' =
+    envWithCleanup (do
+        v <- register $ mkVector ("route", "status_code", "verb") (counter (Info "hits" "The number of hits on this combination of endpoint, status, and verb"))
+        _ <- pure $!! labelCombinations
+        pure v
+        )
+        (\ _ -> unregisterAll)
+        $ \ vec -> do
+
+        bgroup str
+          [ bench "increment all combinations concurrently" $ nfIO $ do
+              forConcurrently_ labelCombinations $ \label -> do
+                  replicateConcurrently_ 100 $ do
+                      replicateM_ 10 $ do
+                          withLabel' vec label incCounter
+          ]
+
+labelCombinations :: [(Text, Text, Text)]
+labelCombinations =  do
+    route <- ["home", "cool", "users", "users/#{id}", "organizations", "organizations/#{id}", "login", "logout", "subscriptions"]
+    statusCode <- ["200", "201", "204", "400", "401", "404", "500"]
+    verb <- ["GET", "POST", "PUT"]
+    pure (route, statusCode, verb)

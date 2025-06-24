@@ -1,6 +1,8 @@
 {-# LANGUAGE BangPatterns #-}
 
-module Prometheus.Metric.Vector (
+-- | This is a variant of the "Prometheus.Metric.Vector" that uses
+-- @stm-containers@ "StmContainers.Map" instead of an @'IORef' ('Data.Map.Map' k v)@.
+module Prometheus.Metric.Vector.STM (
     Vector (..)
 ,   vector
 ,   withLabel
@@ -13,14 +15,14 @@ import Prometheus.Label
 import Prometheus.Metric
 import Prometheus.MonadMonitor
 
+import Data.Hashable
+import Control.Concurrent.STM (atomically)
 import System.IO.Unsafe (unsafeInterleaveIO)
-import Control.Applicative ((<$>))
 import Control.DeepSeq
-import qualified Data.Atomics as Atomics
-import qualified Data.IORef as IORef
-import qualified Data.Map.Strict as Map
 import qualified Data.Text as T
-import Data.Traversable (forM)
+import qualified StmContainers.Map as Map
+import qualified ListT
+import qualified Focus
 
 
 data VectorState l m = VectorState
@@ -28,7 +30,7 @@ data VectorState l m = VectorState
     , vectorStateMetricMap :: !(Map.Map l (MetricImpl m))
     }
 
-data Vector l m = MkVector (IORef.IORef (VectorState l m))
+newtype Vector l m = MkVector (VectorState l m)
 
 instance NFData (Vector l m) where
   rnf (MkVector ioref) = seq ioref ()
@@ -36,8 +38,9 @@ instance NFData (Vector l m) where
 -- | Creates a new vector of metrics given a label.
 vector :: Label l => l -> Metric m -> Metric (Vector l m)
 vector labels gen = Metric $ do
-    ioref <- checkLabelKeys labels $ IORef.newIORef $ VectorState gen Map.empty
-    return $ MetricImpl (MkVector ioref) (collectVector labels ioref)
+    ms <- Map.newIO
+    let vectorState = checkLabelKeys labels $ VectorState gen ms
+    return $! MetricImpl (MkVector vectorState) (collectVector labels ms)
 
 checkLabelKeys :: Label l => l -> a -> a
 checkLabelKeys keys r = foldl check r $ map (T.unpack . labelKey) $ unLabelPairs $ labelPairs keys keys
@@ -62,10 +65,10 @@ checkLabelKeys keys r = foldl check r $ map (T.unpack . labelKey) $ unLabelPairs
 -- TODO(will): This currently makes the assumption that all the types and info
 -- for all sample groups returned by a metric's collect method will be the same.
 -- It is not clear that this will always be a valid assumption.
-collectVector :: Label l => l -> IORef.IORef (VectorState l m) -> IO [SampleGroup]
-collectVector keys ioref = do
-    VectorState _ metricMap <- IORef.readIORef ioref
-    joinSamples <$> concat <$> mapM collectInner (Map.assocs metricMap)
+collectVector :: Label l => l -> Map.Map l (MetricImpl m) -> IO [SampleGroup]
+collectVector keys metricMap = do
+    assocs <- ListT.toList $ Map.listTNonAtomic metricMap
+    joinSamples <$> concat <$> mapM collectInner assocs
     where
         collectInner (labels, (MetricImpl _metric sampleGroups)) =
             map (adjustSamples labels) <$> sampleGroups
@@ -82,22 +85,23 @@ collectVector keys ioref = do
         extract [] = []
         extract (SampleGroup _ _ s:xs) = s ++ extract xs
 
+getAssocs :: Map.Map k v -> IO [(k, v)]
+getAssocs = ListT.toList . Map.listTNonAtomic
+
 getVectorWith :: Vector label metric
               -> (metric -> IO a)
               -> IO [(label, a)]
-getVectorWith (MkVector valueTVar) f = do
-    VectorState _ metricMap <- IORef.readIORef valueTVar
-    Map.assocs <$> forM metricMap (f . metricImplState)
+getVectorWith (MkVector (VectorState _ metricMap)) f = do
+    traverse (traverse (f . metricImplState)) =<< getAssocs metricMap
 
 -- | Given a label, applies an operation to the corresponding metric in the
 -- vector.
-withLabel :: (Label label, MonadMonitor m)
+withLabel :: (Hashable label, Label label, MonadMonitor m)
           => Vector label metric
           -> label
           -> (metric -> IO ())
           -> m ()
-withLabel (MkVector ioref) label f = doIO $ do
-    VectorState gen _ <- IORef.readIORef ioref
+withLabel (MkVector (VectorState gen metricMap)) label f = doIO $ do
     -- NOTE: `unsafeInterleaveIO` is used here because we are doing an
     -- `atomicModifyIORef`. We only conditionally use the `newMetric` if
     -- the `Map` does not already *have* a metric.
@@ -122,32 +126,27 @@ withLabel (MkVector ioref) label f = doIO $ do
     -- a single key in `STM`, and only cause transaction aborts or retries
     -- if the
     newMetric <- unsafeInterleaveIO $ construct gen
-    MetricImpl metric _newVectorState <- Atomics.atomicModifyIORefCAS ioref $ \(VectorState _ metricMap) ->
-        let (metricToReturn, updatedMap) =
-                Map.alterF
-                    (\maybeMetric -> case maybeMetric of
-                        Nothing ->
-                            (newMetric, Just newMetric)
-                        Just metric ->
-                            (metric, Just metric)
-                    )
-                    label
-                    metricMap
-        in
-            (VectorState gen updatedMap, metricToReturn)
+    metric' <- atomically $ do
+        Map.focus (Focus.alter (\maybeMetric ->
+            case maybeMetric of
+                Nothing ->
+                    Just newMetric
+                Just metric ->
+                    Just metric
+                ) *> Focus.lookupWithDefault newMetric)
+            label
+            metricMap
 
-    f metric
+    f (metricImplState metric')
 
 -- | Removes a label from a vector.
-removeLabel :: (Label label, MonadMonitor m)
+removeLabel :: (Hashable label, Label label, MonadMonitor m)
             => Vector label metric -> label -> m ()
-removeLabel (MkVector valueTVar) label =
-    doIO $ IORef.atomicModifyIORef' valueTVar (\a -> (f a, ()))
-    where f (VectorState desc metricMap) = VectorState desc (Map.delete label metricMap)
+removeLabel (MkVector (VectorState _ metricMap)) label =
+    doIO $ atomically $ Map.delete label metricMap
 
 -- | Removes all labels from a vector.
 clearLabels :: (Label label, MonadMonitor m)
             => Vector label metric -> m ()
-clearLabels (MkVector valueTVar) =
-    doIO $ IORef.atomicModifyIORef' valueTVar (\a -> (f a, ()))
-    where f (VectorState desc _) = VectorState desc Map.empty
+clearLabels (MkVector (VectorState _ metricMap)) =
+    doIO $ atomically $ Map.reset metricMap
