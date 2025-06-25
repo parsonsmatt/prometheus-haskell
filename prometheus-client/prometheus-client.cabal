@@ -66,12 +66,17 @@ test-suite doctest
       base               >=4.7 && <5
     , doctest
     , prometheus-client
+    , list-t
+    , hashable
+    , stm-containers
 
 test-suite spec
   type:              exitcode-stdio-1.0
   default-language:  Haskell2010
   hs-source-dirs:    src, tests
   main-is:           Spec.hs
+  build-tool-depends:
+    hspec-discover:hspec-discover
   build-depends:
       QuickCheck
     , atomic-primops
@@ -91,6 +96,10 @@ test-suite spec
     , text
     , primitive
     , data-sketches
+    , focus
+    , list-t
+    , hashable
+    , stm-containers
   ghc-options: -Wall
 
 benchmark bench
