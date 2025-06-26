@@ -102,29 +102,17 @@ withLabel :: (Hashable label, Label label, MonadMonitor m)
           -> (metric -> IO ())
           -> m ()
 withLabel (MkVector (VectorState gen metricMap)) label f = doIO $ do
-    -- NOTE: `unsafeInterleaveIO` is used here because we are doing an
-    -- `atomicModifyIORef`. We only conditionally use the `newMetric` if
-    -- the `Map` does not already *have* a metric.
+    -- NOTE: `unsafeInterleaveIO` will cause `construct gen` to be executed
+    -- and evalauted when `newMetric` is demanded. We will only demand
+    -- `newMetric` in the case that a `Metric` does not already exist in
+    -- the map. This does mean that an IO action will be performed inside
+    -- of an STM transaction. However, due to the nature of
+    -- `unsafeInterleaveIO`, the resulting `newMetric` will be cached and
+    -- reused, so the IO action will not be performed multiple times, even
+    -- if the transaction is invalided and calls `retry`.
     --
-    -- Using `unsafeInterleaveIO` will run `gen` lazily, only when the
-    -- `newMetric` is actually demanded. Since we are using `Map.alterF`,
-    -- this will only occur if we are actually placing a new metric in the
-    -- map.
-    --
-    -- Alternative: MVar
-    --
-    -- An alternative to this would be using an MVar. The `modifyMVar_`
-    -- function has signature `MVar a -> (a -> IO a) -> IO ()`, and would
-    -- allow us to avoid unsafe IO. One con of this is that consumers would
-    -- be blocked and waiting on the MVar to read.
-    --
-    -- Alternative: stm-containers
-    --
-    -- An `IORef (Map k v)` is a bit of a smell - you must take the entire
-    -- `Map` in order to do any operation, harming concurrent access.
-    -- Instead, an `StmContainers.Map` would allow threads to access
-    -- a single key in `STM`, and only cause transaction aborts or retries
-    -- if the
+    -- All instances of `Metric` currently do not perform side-effecting IO
+    -- beyond allocating mutable references. As such, this should be safe.
     newMetric <- unsafeInterleaveIO $ construct gen
     metric' <- atomically $ do
         Map.focus (Focus.alter (\maybeMetric ->

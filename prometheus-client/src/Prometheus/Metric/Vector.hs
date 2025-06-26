@@ -107,20 +107,17 @@ withLabel (MkVector ioref) label f = doIO $ do
     -- this will only occur if we are actually placing a new metric in the
     -- map.
     --
-    -- Alternative: MVar
+    -- Alternative: stm-containers (implemented in
+    -- Prometheus.Metric.Vector.STM)
     --
-    -- An alternative to this would be using an MVar. The `modifyMVar_`
-    -- function has signature `MVar a -> (a -> IO a) -> IO ()`, and would
-    -- allow us to avoid unsafe IO. One con of this is that consumers would
-    -- be blocked and waiting on the MVar to read.
-    --
-    -- Alternative: stm-containers
-    --
-    -- An `IORef (Map k v)` is a bit of a smell - you must take the entire
-    -- `Map` in order to do any operation, harming concurrent access.
-    -- Instead, an `StmContainers.Map` would allow threads to access
-    -- a single key in `STM`, and only cause transaction aborts or retries
-    -- if the
+    -- An `IORef (Map k v)` is a bit of a smell - you must take a lock on
+    -- the entire `Map` in order to do any operation, harming concurrent
+    -- access. The `atomicModifyIORefCAS` avoids this slightly by allowing
+    -- threads to race the computation, but this is also very wasteful: the
+    -- map must be recomputed on every retry. Instead, an
+    -- `StmContainers.Map` would allow threads to access a single key in
+    -- `STM`, and only cause transaction aborts or retries if there is
+    -- contention on that key.
     newMetric <- unsafeInterleaveIO $ construct gen
     MetricImpl metric _newVectorState <- Atomics.atomicModifyIORefCAS ioref $ \(VectorState _ metricMap) ->
         let (metricToReturn, updatedMap) =
