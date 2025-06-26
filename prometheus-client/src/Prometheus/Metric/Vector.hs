@@ -13,6 +13,7 @@ import Prometheus.Label
 import Prometheus.Metric
 import Prometheus.MonadMonitor
 
+import System.IO.Unsafe (unsafeInterleaveIO)
 import Control.Applicative ((<$>))
 import Control.DeepSeq
 import qualified Data.Atomics as Atomics
@@ -96,26 +97,54 @@ withLabel :: (Label label, MonadMonitor m)
           -> (metric -> IO ())
           -> m ()
 withLabel (MkVector ioref) label f = doIO $ do
-    VectorState (Metric gen) _ <- IORef.readIORef ioref
-    newMetric <- gen
-    MetricImpl metric newVectorState <- Atomics.atomicModifyIORefCAS ioref $ \(VectorState _ metricMap) ->
-        let maybeMetric = Map.lookup label metricMap
-            updatedMap  = Map.insert label newMetric metricMap
-        in  case maybeMetric of
-                Nothing     -> (VectorState (Metric gen) updatedMap, newMetric)
-                Just metric -> (VectorState (Metric gen) metricMap, metric)
+    VectorState gen _ <- IORef.readIORef ioref
+    -- NOTE: `unsafeInterleaveIO` is used here because we are doing an
+    -- `atomicModifyIORef`. We only conditionally use the `newMetric` if
+    -- the `Map` does not already *have* a metric.
+    --
+    -- Using `unsafeInterleaveIO` will run `gen` lazily, only when the
+    -- `newMetric` is actually demanded. Since we are using `Map.alterF`,
+    -- this will only occur if we are actually placing a new metric in the
+    -- map.
+    --
+    -- Alternative: stm-containers (implemented in
+    -- Prometheus.Metric.Vector.STM)
+    --
+    -- An `IORef (Map k v)` is a bit of a smell - you must take a lock on
+    -- the entire `Map` in order to do any operation, harming concurrent
+    -- access. The `atomicModifyIORefCAS` avoids this slightly by allowing
+    -- threads to race the computation, but this is also very wasteful: the
+    -- map must be recomputed on every retry. Instead, an
+    -- `StmContainers.Map` would allow threads to access a single key in
+    -- `STM`, and only cause transaction aborts or retries if there is
+    -- contention on that key.
+    newMetric <- unsafeInterleaveIO $ construct gen
+    MetricImpl metric _newVectorState <- Atomics.atomicModifyIORefCAS ioref $ \(VectorState _ metricMap) ->
+        let (metricToReturn, updatedMap) =
+                Map.alterF
+                    (\maybeMetric -> case maybeMetric of
+                        Nothing ->
+                            (newMetric, Just newMetric)
+                        Just metric ->
+                            (metric, Just metric)
+                    )
+                    label
+                    metricMap
+        in
+            (VectorState gen updatedMap, metricToReturn)
+
     f metric
 
 -- | Removes a label from a vector.
 removeLabel :: (Label label, MonadMonitor m)
             => Vector label metric -> label -> m ()
 removeLabel (MkVector valueTVar) label =
-    doIO $ Atomics.atomicModifyIORefCAS_ valueTVar f
+    doIO $ IORef.atomicModifyIORef' valueTVar (\a -> (f a, ()))
     where f (VectorState desc metricMap) = VectorState desc (Map.delete label metricMap)
 
 -- | Removes all labels from a vector.
 clearLabels :: (Label label, MonadMonitor m)
             => Vector label metric -> m ()
 clearLabels (MkVector valueTVar) =
-    doIO $ Atomics.atomicModifyIORefCAS_ valueTVar f
+    doIO $ IORef.atomicModifyIORef' valueTVar (\a -> (f a, ()))
     where f (VectorState desc _) = VectorState desc Map.empty

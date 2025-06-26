@@ -39,7 +39,7 @@ withGauge :: MonadMonitor m
           -> (Double -> Double)
           -> m ()
 withGauge (MkGauge ioref) f =
-    doIO $ Atomics.atomicModifyIORefCAS_ ioref f
+    doIO $ IORef.atomicModifyIORef' ioref (\a -> (f a, ()))
 
 -- | Adds a value to a gauge metric.
 addGauge :: MonadMonitor m => Gauge -> Double -> m ()

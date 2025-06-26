@@ -259,7 +259,7 @@ import Prometheus.Metric.Gauge
 import Prometheus.Metric.Histogram
 import Prometheus.Metric.Observer
 import Prometheus.Metric.Summary
-import Prometheus.Metric.Vector
+import Prometheus.Metric.Vector.STM
 import Prometheus.MonadMonitor
 import Prometheus.Registry
 

@@ -89,3 +89,61 @@ A bang pattern on the accumulator can help.
 
 `formatFloat` is used to produce a `Text` label value for the `LabelPair`.
 This suggests we can use `Data.Text.Lazy.Builder` to avoid the intermediate `String`.
+
+# Verifying the Memory Patterns of Various Metrics
+
+## Gauge
+
+A `Gauge` contains an `IORef Double`.
+Operations on the double properly force it to WHNF through the guarantee provided by `atomicModifyIORefCAS_`.
+
+## Counter
+
+Same as Gauge.
+
+## Histogram
+
+Internally a `TVar BucketCounts`, with `BucketCounts` containing a `Double`, `Int`, and `Map Bucket Int`, where `Bucket = Double`.
+
+`withHistogram` uses `modifyTVar'`, which evaluates to WHNF.
+The datatype has strict fields, so this will evaluate all fields of datatype.
+The `Map` comes from `Data.Map.Strict`, which is "strict in the spine" and so this will evaluate the entire `Map` structure.
+
+The `Map` is constructed with a constant set of keys.
+`insert`ing a value into the `Map` does not ever add a key - the relevant `upperBound` is incremented by 1 with a strict operation.
+
+I am still suspicious of `scanl1`. 
+However, we are only calling that on the `Map`, which has fixed number of buckets, and probably a small set of buckets.
+Our app does not use especially large buckets - the term only has ~30 uses in our metrics module, and only ~20 items in the bigger lists.
+
+## Observer
+
+This defines a type class, not a specific method, and gives `observeDuration` helpers.
+Nothing concernig here.
+
+## Summary
+
+`Summary` is an `MVar (ReqSketch (PrimState IO))` and a `[Quantile]`.
+
+### `ReqSketch`
+
+ReqSketch is defined [here](https://www.stackage.org/haddock/lts-23.24/data-sketches-0.3.1.0/DataSketches-Quantiles-RelativeErrorQuantile.html#t:ReqSketch)
+
+## Vector
+
+`Vector` definitely has some sketchy behavior.
+Every time you call `withLabel`, it actually creates a whole new `Metric` unconditionally.
+This is very fast for most `Metric` types.
+However, `Summary` may be more expensive, and we do use a lot of `Summary`.
+
+Using `unsafeInterleaveIO`, we can avoid creating it unless it is actually demanded.
+
+# `atomicModifyIORefCAS`
+
+This function comes from the `atomic-primops` package.
+I don't think it's what we want.
+In a high-contention environment, it is likely to rerun the computation multiple times (up to 30!).
+This means recreating potentially large objects, potentially causing significant extra allocations.
+
+`atomicModifyIORef'` is still not great - we're introducing some contention on the `IORef` for any key.
+An `stm-containers` approach would be better.
