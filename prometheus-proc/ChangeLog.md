@@ -1,3 +1,16 @@
+# 0.1.6.1 -- 2025-05-03
+
+* Relax bounds on filepath.
+
+# 0.1.6.0 -- 2024-04-03
+
+* Relax bounds on base, unix, and text to support GHC 9.6 and 9.8
+
+# 0.1.5.0 -- 2023-05-11
+
+* Support base-4.17 and (GHC 9.2 & GHC 9.4)
+* Support text-2.0
+
 # 0.1.4.0 -- 2022-03-21
 
 * Support base-4.15 and GHC 9.0.
