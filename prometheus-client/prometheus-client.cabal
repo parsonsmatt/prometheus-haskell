@@ -53,7 +53,7 @@ library
     , focus
     , list-t
     , hashable
-    , data-sketches
+    , data-sketches      < 0.4
   ghc-options: -Wall
 
 test-suite doctest
@@ -95,11 +95,11 @@ test-suite spec
     , exceptions
     , text
     , primitive
-    , data-sketches
     , focus
     , list-t
     , hashable
     , stm-containers
+    , data-sketches      < 0.4
   ghc-options: -Wall
 
 benchmark bench
